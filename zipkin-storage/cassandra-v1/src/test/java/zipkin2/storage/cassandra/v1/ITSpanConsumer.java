@@ -105,7 +105,7 @@ abstract class ITSpanConsumer {
   static String getTagValue(CassandraStorage storage, String key) {
     return storage
       .session()
-      .execute("SELECT value from " + Tables.TABLE_AUTOCOMPLETE_TAGS + " WHERE key='environment'")
+      .execute("SELECT value from " + Tables.AUTOCOMPLETE_TAGS + " WHERE key='environment'")
       .one()
       .getString(0);
   }
@@ -128,7 +128,7 @@ abstract class ITSpanConsumer {
         .build();
     accept(storage.spanConsumer(), trace);
 
-    assertThat(rowCount(Tables.TABLE_AUTOCOMPLETE_TAGS))
+    assertThat(rowCount(Tables.AUTOCOMPLETE_TAGS))
       .isGreaterThanOrEqualTo(1L);
 
     assertThat(getTagValue(storage, "environment")).isEqualTo("dev");

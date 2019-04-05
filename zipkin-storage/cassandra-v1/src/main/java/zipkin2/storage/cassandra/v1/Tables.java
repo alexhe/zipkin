@@ -46,6 +46,9 @@ final class Tables {
    */
   static final String SPAN_NAMES = "span_names";
 
+  /** This table supports {@link AutocompleteTags#getValues(String key)}. */
+  static final String AUTOCOMPLETE_TAGS = "autocomplete_tags";
+
   /**
    * This index supports trace id lookups by {@link QueryRequest#serviceName()}, within the interval
    * of {@link QueryRequest#endTs()} - {@link QueryRequest#lookback()}.
@@ -90,12 +93,6 @@ final class Tables {
    * (random number between 0 and 9).
    */
   static final String ANNOTATIONS_INDEX = "annotations_index";
-
-  /** This table supports {@link AutocompleteTags#getValues(String key)}. */
-  static final String TABLE_AUTOCOMPLETE_TAGS = "autocomplete_tags";
-
-  /** This table supports {@link ServiceAndSpanNames#getRemoteServiceNames(String)}. */
-  static final String TABLE_SERVICE_REMOTE_SERVICES = "remote_service_by_service";
 
   private Tables() {
   }

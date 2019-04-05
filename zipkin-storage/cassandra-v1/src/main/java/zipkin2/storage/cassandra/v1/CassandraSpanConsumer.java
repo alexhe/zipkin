@@ -97,6 +97,7 @@ final class CassandraSpanConsumer implements SpanConsumer {
       // service span and remote service indexes is refreshed regardless of timestamp
       String serviceName = v2.localServiceName();
       if (serviceName != null) {
+        insertServiceNames.add(serviceName);
         if (v2.name() != null) insertSpanNames.add(insertSpanName.newInput(serviceName, v2.name()));
         if (insertRemoteServiceName != null && v2.remoteServiceName() != null) {
           insertRemoteServiceNames.add(
@@ -132,7 +133,7 @@ final class CassandraSpanConsumer implements SpanConsumer {
   @VisibleForTesting
   void clear() {
     insertServiceName.clear();
-    insertRemoteServiceName.clear();
+    if (insertRemoteServiceName != null) insertRemoteServiceName.clear();
     insertSpanName.clear();
     indexer.clear();
     if (insertAutocompleteValue != null) insertAutocompleteValue.clear();
