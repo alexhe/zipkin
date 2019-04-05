@@ -34,6 +34,7 @@ import zipkin2.v1.V2SpanConverter;
 final class CassandraSpanConsumer implements SpanConsumer {
   final InsertTrace.Factory insertTrace;
   final InsertServiceName.Factory insertServiceName;
+  final InsertRemoteServiceName.Factory insertRemoteServiceName;
   final InsertSpanName.Factory insertSpanName;
   final Schema.Metadata metadata;
   final CompositeIndexer indexer;
@@ -42,14 +43,22 @@ final class CassandraSpanConsumer implements SpanConsumer {
 
   CassandraSpanConsumer(CassandraStorage storage, CacheBuilderSpec indexCacheSpec) {
     Session session = storage.session();
-    metadata = Schema.readMetadata(session);
+    metadata = storage.metadata();
     int indexTtl = metadata.hasDefaultTtl ? 0 : storage.indexTtl;
     int spanTtl = metadata.hasDefaultTtl ? 0 : storage.spanTtl;
     insertTrace = new InsertTrace.Factory(session, metadata, spanTtl);
     insertServiceName = new InsertServiceName.Factory(storage, indexTtl);
     insertSpanName = new InsertSpanName.Factory(storage, indexTtl);
-    insertAutocompleteValue = !storage.autocompleteKeys.isEmpty()
-      ? new InsertAutocompleteValue.Factory(storage, indexTtl) : null;
+    if (metadata.hasRemoteServiceByService) {
+      insertRemoteServiceName = new InsertRemoteServiceName.Factory(storage, indexTtl);
+    } else {
+      insertRemoteServiceName = null;
+    }
+    if (metadata.hasAutocompleteTags && !storage.autocompleteKeys.isEmpty()) {
+      insertAutocompleteValue = new InsertAutocompleteValue.Factory(storage, indexTtl);
+    } else {
+      insertAutocompleteValue = null;
+    }
     indexer = new CompositeIndexer(session, indexCacheSpec, storage.bucketCount, indexTtl);
     autocompleteKeys = new LinkedHashSet<>(storage.autocompleteKeys);
   }
@@ -67,6 +76,7 @@ final class CassandraSpanConsumer implements SpanConsumer {
 
     Set<InsertTrace.Input> insertTraces = new LinkedHashSet<>();
     Set<String> insertServiceNames = new LinkedHashSet<>();
+    Set<InsertRemoteServiceName.Input> insertRemoteServiceNames = new LinkedHashSet<>();
     Set<InsertSpanName.Input> insertSpanNames = new LinkedHashSet<>();
     Set<Map.Entry<String, String>> autocompleteTags = new LinkedHashSet<>();
 
@@ -78,14 +88,22 @@ final class CassandraSpanConsumer implements SpanConsumer {
 
       insertTraces.add(insertTrace.newInput(span, encoder.write(v2), ts_micro));
 
-      for (String serviceName : span.serviceNames()) {
-        insertServiceNames.add(serviceName);
-        if (span.name() == null) continue;
-        insertSpanNames.add(insertSpanName.newInput(serviceName, span.name()));
+      if (insertAutocompleteValue != null) {
+        for (Map.Entry<String, String> entry : v2.tags().entrySet()) {
+          if (autocompleteKeys.contains(entry.getKey())) autocompleteTags.add(entry);
+        }
       }
-      for (Map.Entry<String, String> entry : v2.tags().entrySet()) {
-        if (autocompleteKeys.contains(entry.getKey())) autocompleteTags.add(entry);
+
+      // service span and remote service indexes is refreshed regardless of timestamp
+      String serviceName = v2.localServiceName();
+      if (serviceName != null) {
+        if (v2.name() != null) insertSpanNames.add(insertSpanName.newInput(serviceName, v2.name()));
+        if (insertRemoteServiceName != null && v2.remoteServiceName() != null) {
+          insertRemoteServiceNames.add(
+            insertRemoteServiceName.newInput(serviceName, v2.remoteServiceName()));
+        }
       }
+
       if (ts_micro == 0L) continue; // search is only valid with a timestamp, don't index w/o it!
       spansToIndex.add(span);
     }
@@ -96,6 +114,9 @@ final class CassandraSpanConsumer implements SpanConsumer {
     }
     for (String insert : insertServiceNames) {
       insertServiceName.maybeAdd(insert, calls);
+    }
+    for (InsertRemoteServiceName.Input insert : insertRemoteServiceNames) {
+      insertRemoteServiceName.maybeAdd(insert, calls);
     }
     for (InsertSpanName.Input insert : insertSpanNames) {
       insertSpanName.maybeAdd(insert, calls);
@@ -111,6 +132,7 @@ final class CassandraSpanConsumer implements SpanConsumer {
   @VisibleForTesting
   void clear() {
     insertServiceName.clear();
+    insertRemoteServiceName.clear();
     insertSpanName.clear();
     indexer.clear();
     if (insertAutocompleteValue != null) insertAutocompleteValue.clear();
